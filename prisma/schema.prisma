@@ -1,0 +1,509 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+//
+// ================= ENUMS =================
+//
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  ADMIN
+  MANAGER
+  CASHIER
+  STAFF
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  OTHER
+}
+
+enum SaleStatus {
+  COMPLETED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  CANCELED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+//
+// ================= USERS =================
+//
+
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  language String @default("en")
+  imageUrl  String?
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownedShops      Shop[]          @relation("ShopOwner")
+  roles           UserShopRole[]
+  sales           Sale[]          @relation("SaleCashier")
+  processedReturns Return[]       @relation("ReturnProcessor")
+  expenses        Expense[]
+  priceChanges    ProductPriceHistory[]
+  reports         ProfitReport[]
+  recordedLosses  InventoryLoss[]
+  
+  @@index([email])
+}
+
+//
+// ================= SHOP =================
+//
+
+model Shop {
+  id        Int      @id @default(autoincrement())
+  name      String
+  currency  String   @default("USD")
+  location  String?   // Latitude,Longitude
+  isActive  Boolean  @default(true)
+
+  ownerId   Int
+  owner     User     @relation("ShopOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff         UserShopRole[]
+  products      Product[]
+  batches       PurchaseBatch[]
+  sales         Sale[]
+  returns       Return[]
+  expenses      Expense[]
+  profitReports ProfitReport[]
+  losses        InventoryLoss[]
+  customers     Customer[]
+  brands    Brand[]
+  categories    LocalCategory[]
+  analytics     ShopAnalytics[]
+
+  @@index([ownerId])
+}
+
+model UserShopRole {
+  id     Int  @id @default(autoincrement())
+  userId Int
+  shopId Int
+  role   Role
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, shopId])
+}
+
+//
+// ================= CATEGORY =================
+//
+
+model GlobalCategory {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  imageUrl  String?
+  isActive  Boolean  @default(true)
+
+  localCategories LocalCategory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LocalCategory {
+  id        Int      @id @default(autoincrement())
+  name      String
+  shopId    Int
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  
+  globalCategoryId Int?
+  globalCategory   GlobalCategory? @relation(fields: [globalCategoryId], references: [id], onDelete: SetNull)
+
+  products  Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, shopId])
+  @@index([globalCategoryId])
+}
+
+//
+// ================= UNIT =================
+//
+
+model Unit {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  symbol    String   @unique
+  products  Product[]
+
+  createdAt DateTime @default(now())
+}
+
+model Brand {
+  id        Int      @id @default(autoincrement())
+  name      String
+  shopId    Int
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  products  Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, shopId]) // Prevents duplicate brand names within the same shop
+}
+
+//
+// ================= PRODUCT =================
+//
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  sku         String   @unique
+  barcode     String?  @unique
+  description String?
+  imageUrl    String? 
+  lowStockThreshold Int    @default(0)
+  reminder    Boolean  @default(false) // for send low stocks massege  
+
+  brandId     Int?
+  brand       Brand?   @relation(fields: [brandId], references: [id])
+
+  categoryId  Int
+  category    LocalCategory @relation(fields: [categoryId], references: [id])
+
+  unitId      Int
+  unit        Unit     @relation(fields: [unitId], references: [id])
+
+  valuationMethod Int  @default(0) // 0 FIFO, 1 LIFO
+  isActive        Boolean @default(true)
+  displayProductInApp Boolean @default(true)
+
+  shopId      Int
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  batches      PurchaseBatch[]
+  saleItems    SaleItem[]
+  priceHistory ProductPriceHistory[]
+  losses       InventoryLoss[]
+  promotions   Promotion[]
+
+  @@index([name])
+  @@index([shopId])
+}
+
+//
+// ================= PURCHASE BATCH =================
+//
+
+model PurchaseBatch {
+  id          Int      @id @default(autoincrement())
+  quantity    Decimal  @db.Decimal(12,3)   // was Int
+  remaining   Decimal  @db.Decimal(12,3)
+
+  costPerUnit Decimal  @db.Decimal(10,2)
+  sellPrice   Decimal? @db.Decimal(10,2)
+
+  purchasedAt DateTime @default(now())
+  expiryDate  DateTime?
+
+  productId   Int
+  shopId      Int
+  supplierId  Int?
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  saleLinks    SaleItemBatch[]
+  losses       InventoryLoss[]
+  returnItems  ReturnItem[]
+  promotions   Promotion[]
+
+  @@index([productId])
+  @@index([purchasedAt])
+}
+
+//
+// ================= SUPPLIER =================
+//
+
+model Supplier {
+  id        Int      @id @default(autoincrement())
+  name      String
+  contact   String?
+
+  batches   PurchaseBatch[]
+
+  createdAt DateTime @default(now())
+}
+
+//
+// ================= PROMOTION =================
+//
+
+model Promotion {
+  id           Int      @id @default(autoincrement())
+  name         String
+  discountType DiscountType
+  value        Decimal  @db.Decimal(10,2)
+
+  startDate    DateTime
+  endDate      DateTime
+  isActive     Boolean  @default(true)
+
+  productId    Int
+  batchId      Int?
+
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batch        PurchaseBatch? @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+
+  @@index([startDate, endDate])
+}
+
+//
+// ================= SALES =================
+//
+
+model Sale {
+  id            Int           @id @default(autoincrement())
+  totalAmount   Decimal       @db.Decimal(10,2)
+  status        SaleStatus    @default(COMPLETED)
+  paymentMethod PaymentMethod @default(CASH)
+
+  shopId      Int
+  cashierId   Int?
+  customerId  Int?
+
+  shop     Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  cashier  User?     @relation("SaleCashier", fields: [cashierId], references: [id], onDelete: SetNull)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  items     SaleItem[]
+  returns   Return[]
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model SaleItem {
+  id          Int @id @default(autoincrement())
+  saleId      Int
+  productId   Int
+  quantity    Decimal @db.Decimal(12,3)
+
+  price       Decimal @db.Decimal(10,2)
+  costAtSale  Decimal @db.Decimal(10,2)
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  batchLinks  SaleItemBatch[]
+  returnItems ReturnItem[]
+}
+
+model SaleItemBatch {
+  id         Int @id @default(autoincrement())
+  saleItemId Int
+  batchId    Int
+  quantity   Decimal @db.Decimal(12,3)
+
+  saleItem SaleItem      @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  batch    PurchaseBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+}
+
+//
+// ================= RETURNS =================
+//
+
+model Return {
+  id            Int      @id @default(autoincrement())
+  saleId        Int
+  shopId        Int
+  processedById Int?
+  totalRefunded Decimal  @db.Decimal(10,2)
+
+  sale        Sale  @relation(fields: [saleId], references: [id])
+  shop        Shop  @relation(fields: [shopId], references: [id])
+  processedBy User? @relation("ReturnProcessor", fields: [processedById], references: [id])
+
+  items       ReturnItem[]
+
+  createdAt   DateTime @default(now())
+}
+
+model ReturnItem {
+  id           Int @id @default(autoincrement())
+  returnId     Int
+  saleItemId   Int
+  batchId      Int?
+  quantity     Decimal @db.Decimal(12,3)
+  refundAmount Decimal @db.Decimal(10,2)
+
+  isRestocked Boolean @default(true)
+
+  return      Return         @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItem    SaleItem       @relation(fields: [saleItemId], references: [id])
+  restockedTo PurchaseBatch? @relation(fields: [batchId], references: [id])
+}
+
+//
+// ================= LOSSES =================
+//
+
+model InventoryLoss {
+  id             Int @id @default(autoincrement())
+  quantity       Decimal @db.Decimal(12,3)
+  reason         String
+  costAtLoss     Decimal @db.Decimal(10,2)
+  totalLossValue Decimal @db.Decimal(10,2)
+
+  productId    Int
+  batchId      Int?
+  shopId       Int
+  recordedById Int?
+
+  product    Product        @relation(fields: [productId], references: [id])
+  batch      PurchaseBatch? @relation(fields: [batchId], references: [id])
+  shop       Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  recordedBy User?          @relation(fields: [recordedById], references: [id])
+
+  createdAt  DateTime @default(now())
+}
+
+//
+// ================= CRM =================
+//
+
+model Customer {
+  id        Int    @id @default(autoincrement())
+  name      String
+  phone     String?
+
+  shopId    Int
+  shop      Shop @relation(fields: [shopId], references: [id])
+
+  sales     Sale[]
+
+  createdAt DateTime @default(now())
+}
+
+//
+// ================= FINANCE =================
+//
+
+model Expense {
+  id        Int      @id @default(autoincrement())
+  title     String
+  amount    Decimal  @db.Decimal(10,2)
+
+  shopId    Int
+  addedById Int?
+
+  shop    Shop  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  addedBy User? @relation(fields: [addedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+}
+
+model ProfitReport {
+  id            Int      @id @default(autoincrement())
+  totalSales    Decimal  @db.Decimal(10,2)
+  totalExpenses Decimal  @db.Decimal(10,2)
+  totalLoss     Decimal  @db.Decimal(10,2)
+  netProfit     Decimal  @db.Decimal(10,2)
+
+  periodStart   DateTime
+  periodEnd     DateTime
+
+  shopId        Int
+  generatedById Int?
+
+  shop        Shop  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  generatedBy User? @relation(fields: [generatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+}
+
+//
+// ================= PRICE HISTORY =================
+//
+
+model ProductPriceHistory {
+  id         Int @id @default(autoincrement())
+
+  oldPrice   Decimal @db.Decimal(10,2)
+  newPrice   Decimal @db.Decimal(10,2)
+
+  productId  Int
+  changedById Int?
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  changedBy User?   @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+}
+
+//
+// ================= ANALYTICS =================
+//
+
+model ShopAnalytics {
+  id               Int      @id @default(autoincrement())
+  shopId           Int      @unique
+
+  // Date Keys to handle automatic resets
+  currentDayKey    String   @default("")
+  currentWeekKey   String   @default("")
+  currentMonthKey  String   @default("")
+  currentYearKey   String   @default("")
+
+  dayTotalRevenue  Float    @default(0)
+  dayTotalCost     Float    @default(0)
+  dayTotalProfit   Float    @default(0)
+  daySaleCount     Int      @default(0)
+
+  weekTotalRevenue Float    @default(0)
+  weekTotalCost    Float    @default(0)
+  weekTotalProfit  Float    @default(0)
+  weekSaleCount    Int      @default(0)
+
+  monthTotalRevenue Float   @default(0)
+  monthTotalCost    Float   @default(0)
+  monthTotalProfit  Float   @default(0)
+  monthSaleCount    Int     @default(0)
+
+  yearTotalRevenue Float    @default(0)
+  yearTotalCost    Float    @default(0)
+  yearTotalProfit  Float    @default(0)
+  yearSaleCount    Int      @default(0)
+
+  shop             Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+}

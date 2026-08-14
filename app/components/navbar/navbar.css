@@ -1,0 +1,20 @@
+/* ── Sidebar responsive helpers ── */
+
+/* Slide-in animation for mobile/tablet drawer */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.25s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Hide scrollbar on sidebar nav */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Safe area padding for iOS home indicator */
+.safe-area-bottom {
+  padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+}
