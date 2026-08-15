@@ -34,13 +34,19 @@ export default function ProductGrid({ products, currency, isLoading }: ProductGr
     });
   }, [products, query, activeCategory]);
 
+  // FIX: capped, breakpoint-based columns instead of unbounded auto-fill.
+  // auto-fill(minmax(120px,1fr)) will happily cram 7-8 columns into a wide
+  // panel, shrinking each card until the price/stock row has no room and
+  // gets clipped by the card's overflow-hidden. Fixed column counts per
+  // breakpoint guarantee a minimum readable card width at every screen size.
   const gridClass =
-    "grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-[0.55rem] overflow-y-auto pr-0.5 content-start flex-1 min-h-0";
+    "grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 " +
+    "gap-2 sm:gap-2.5 overflow-y-auto pr-0.5 pb-2 content-start flex-1 min-h-0 auto-rows-min";
 
   return (
     <div className="flex flex-col gap-[0.65rem] h-full min-h-0">
       {/* Search bar */}
-      <div className="relative flex items-center bg-slate-50 shadow-sm border border-gray-100 rounded-[10px] px-3  focus-within:bg-white transition-colors">
+      <div className="relative flex items-center bg-slate-50 shadow-sm border border-gray-100 rounded-[10px] px-3  focus-within:bg-white transition-colors shrink-0">
         <Search size={16} className="text-gray-400 shrink-0" />
         <input
           className="flex-1 border-none bg-transparent py-[0.55rem] px-2 text-[0.85rem] text-slate-900 outline-none placeholder:text-gray-400"
@@ -53,7 +59,7 @@ export default function ProductGrid({ products, currency, isLoading }: ProductGr
             className="bg-transparent text-gray-400 text-[1.1rem] cursor-pointer px-px leading-none hover:text-gray-600"
             onClick={() => setQuery("")}
           >
-            ×   
+            ×
           </button>
         )}
       </div>
@@ -64,7 +70,7 @@ export default function ProductGrid({ products, currency, isLoading }: ProductGr
           <button
             key={cat}
             onClick={() => setActiveCategory(cat)}
-            className={`border-none rounded-full px-[0.8rem] py-[0.3rem] text-[0.75rem] font-semibold cursor-pointer whitespace-nowrap transition-all duration-120
+            className={`border-none rounded-full px-[0.8rem] py-[0.3rem] text-[0.75rem] font-semibold cursor-pointer whitespace-nowrap transition-all duration-120 shrink-0
               ${cat === activeCategory
                 ? "bg-[#F5A623] text-white"
                 : "bg-slate-100 text-slate-500 hover:bg-slate-200"
@@ -81,7 +87,7 @@ export default function ProductGrid({ products, currency, isLoading }: ProductGr
           {Array.from({ length: 8 }).map((_, i) => (
             <div
               key={i}
-              className="h-37 rounded-xl bg-linear-to-r from-slate-100 via-slate-200 to-slate-100 bg-size-[200%_100%] animate-shimmer"
+              className="h-[170px] rounded-xl bg-gradient-to-r from-slate-100 via-slate-200 to-slate-100 bg-[length:200%_100%] animate-shimmer"
             />
           ))}
         </div>
@@ -102,7 +108,9 @@ export default function ProductGrid({ products, currency, isLoading }: ProductGr
                 key={p.id}
                 onClick={() => !outOfStock && addItem(p)}
                 disabled={outOfStock}
-                className={`border-[1.5px] border-slate-100 rounded-xl bg-white cursor-pointer text-left p-0 overflow-hidden relative transition-all duration-150 flex flex-col
+                // FIX: min-h guarantees the price/stock row always has room
+                // to render instead of being squeezed out when cards get narrow.
+                className={`border-[1.5px] border-slate-100 rounded-xl bg-white cursor-pointer text-left p-0 relative transition-all duration-150 flex flex-col min-h-[170px] w-full
                   ${outOfStock
                     ? "opacity-50 cursor-not-allowed"
                     : "hover:border-indigo-500 hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(99,102,241,0.12)] active:scale-[0.97]"
@@ -118,8 +126,9 @@ export default function ProductGrid({ products, currency, isLoading }: ProductGr
                   </div>
                 )}
 
-                {/* Image */}
-                <div className="relative w-full pt-[65%] bg-slate-50 overflow-hidden">
+                {/* Image - fixed height instead of aspect-ratio padding hack,
+                    so it can't balloon and starve the info section below */}
+                <div className="relative w-full h-[90px] sm:h-[100px] bg-slate-50 overflow-hidden rounded-t-xl shrink-0">
                   {p.imageUrl ? (
                     <img
                       src={p.imageUrl}
@@ -127,25 +136,25 @@ export default function ProductGrid({ products, currency, isLoading }: ProductGr
                       className="absolute inset-0 w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-[1.8rem] font-extrabold bg-linear-to-br from-indigo-100 to-violet-100 text-indigo-500">
+                    <div className="absolute inset-0 flex items-center justify-center text-[1.8rem] font-extrabold bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-500">
                       {p.name.charAt(0).toUpperCase()}
                     </div>
                   )}
                 </div>
 
                 {/* Info */}
-                <div className="p-2 flex flex-col gap-0.5 flex-1">
-                  <span className="text-[0.78rem] font-bold text-slate-900 leading-snug line-clamp-2">
+                <div className="p-2 flex flex-col gap-0.5 flex-1 min-w-0">
+                  <span className="text-[0.78rem] font-bold text-slate-900 leading-snug line-clamp-2 min-h-[2.1em]">
                     {p.name}
                   </span>
-                  <span className="text-[0.65rem] text-gray-400">{p.category.name}</span>
+                  <span className="text-[0.65rem] text-gray-400 truncate">{p.category.name}</span>
 
-                  <div className="flex justify-between items-center mt-auto pt-1">
-                    <span className="text-[0.8rem] font-bold text-slate-900">
+                  <div className="flex justify-between items-center mt-auto pt-1 gap-1 flex-wrap">
+                    <span className="text-[0.8rem] font-bold text-slate-900 whitespace-nowrap">
                       {p.sellPrice !== null ? `${currency} ${p.sellPrice.toFixed(2)}` : "—"}
                     </span>
                     <span
-                      className={`text-[0.62rem] font-bold rounded px-1.25 py-px inline-flex items-center gap-0.5
+                      className={`text-[0.62rem] font-bold rounded px-1.25 py-px inline-flex items-center gap-0.5 whitespace-nowrap
                         ${outOfStock
                           ? "bg-red-50 text-red-800"
                           : lowStock
